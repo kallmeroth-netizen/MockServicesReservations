@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Neighborly — Reservations</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js">
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
 // ── INVENTORY GRID ────────────────────────────────────────────────────────────
 function renderInventoryGrid(){
   const INV_DATES = ['2025-09-18','2025-09-19','2025-09-20'];
@@ -54,8 +55,8 @@ function renderInventoryGrid(){
     <div class="inv-day-card">
       <div class="inv-day-header">${fmtDate(date)}</div>
       <div class="inv-day-body">
-        ${makeServiceBlock(date,amTimes,'Morning Service')}
-        ${makeServiceBlock(date,pmTimes,'Evening Service')}
+        ${makeServiceBlock(date,amTimes,'Lunch Service')}
+        ${makeServiceBlock(date,pmTimes,'Dinner Service')}
       </div>
     </div>`).join('');
 }
@@ -259,10 +260,10 @@ textarea{resize:vertical;min-height:68px}
 .admin-lock-title{font-size:26px;font-weight:400;letter-spacing:-.02em;margin:6px 0 14px}
 .admin-wrap{width:min(1280px,100%);margin:0 auto;display:grid;gap:14px}
 .admin-header{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
-.admin-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.metric-card{border:.5px solid var(--border);border-radius:13px;background:var(--surface);padding:16px}
-.metric-card b{display:block;font-size:34px;font-weight:300;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.metric-card span{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;color:var(--text3)}
+.admin-metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.metric-card{border:.5px solid var(--border);border-radius:11px;background:var(--surface);padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:1px}
+.metric-card b{display:block;font-size:22px;font-weight:300;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1.15}
+.metric-card span{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3)}
 .admin-section{border:.5px solid var(--border);border-radius:14px;background:var(--surface);padding:18px;overflow:auto}
 .admin-section-title{font-size:16px;font-weight:600;letter-spacing:-.01em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
 /* Inventory form */
@@ -343,6 +344,28 @@ textarea{resize:vertical;min-height:68px}
 .inv-booking-status.low{color:var(--yd)}
 .inv-booking-status.ok{color:var(--gd)}
 @media(max-width:700px){.inv-day-body{grid-template-columns:1fr}.inv-service-block+.inv-service-block{border-left:none;border-top:.5px solid var(--border)}}
+
+/* ── EVENT PHOTOGRAPHY (hosted in /images) ───────────────────────────────── */
+#page-welcome .ed-bg{background:linear-gradient(160deg,rgba(26,25,22,.82),rgba(26,25,22,.40) 55%,rgba(26,25,22,.22)),url("images/01-storefront.jpg") center/cover no-repeat}
+#page-book .ed-bg{background:linear-gradient(160deg,rgba(26,25,22,.84),rgba(26,25,22,.46) 55%,rgba(26,25,22,.28)),url("images/02-pizza.jpg") center/cover no-repeat}
+.confirm-photo{background:linear-gradient(160deg,rgba(26,25,22,.55),rgba(26,25,22,.22)),url("images/03-storefront-closeup.jpg") center/cover no-repeat}
+
+/* ── CHECK-IN / OPERATIONS ───────────────────────────────────────────────── */
+.ci-day{border:.5px solid var(--border);border-radius:11px;overflow:hidden;margin-bottom:10px}
+.ci-day-hd{padding:11px 14px;background:var(--dark);color:#fff;font-size:13.5px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;justify-content:space-between}
+.ci-day-count{font-size:11px;font-weight:500;color:rgba(255,255,255,.7);font-family:'DM Mono',monospace}
+.ci-day-body{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.ci-service{padding:12px 14px}
+.ci-service+.ci-service{border-left:.5px solid var(--border)}
+.ci-service-hd{font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.ci-service-hd b{font-family:'DM Mono',monospace;font-weight:600;color:var(--text2)}
+.ci-guest{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:.5px solid var(--border)}
+.ci-guest:last-child{border-bottom:none}
+.ci-guest.done .ci-guest-name{text-decoration:line-through;color:var(--text3)}
+.ci-guest-main{display:flex;flex-direction:column;gap:1px;min-width:0}
+.ci-guest-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ci-guest-sub{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace}
+@media(max-width:700px){.ci-day-body{grid-template-columns:1fr}.ci-service+.ci-service{border-left:none;border-top:.5px solid var(--border)}}
 </style>
 </head>
 <body>
@@ -519,6 +542,11 @@ textarea{resize:vertical;min-height:68px}
     </div>
     <!-- Metrics -->
     <div class="admin-metrics" id="adminMetrics"></div>
+    <!-- Check-in / operations -->
+    <div class="admin-section">
+      <div class="admin-section-title">Check-in <span style="font-size:12px;font-weight:400;color:var(--text3)">Confirmed guests by day, lunch &amp; dinner — sorted by time &amp; name</span></div>
+      <div id="checkInView"></div>
+    </div>
     <!-- Inventory setup -->
     <div class="admin-section">
       <div class="admin-section-title">Capacity Setup <span style="font-size:12px;font-weight:400;color:var(--text3)">Set tables per slot — updates guest availability live</span></div>
@@ -811,7 +839,7 @@ async function submitReservation(){
   const c=countsFor(booking.date,booking.party,booking.time);
   if(c.available<1){ toast('That slot just filled — please choose another time.'); setStep(3,false); return; }
   const r={
-    id:uid('res'), code:code(), status:'confirmed',
+    id:uid('res'), code:code(), status:'confirmed', checkedIn:false, checkedInAt:null,
     date:booking.date, time:booking.time, party:booking.party,
     firstName:$('fFirst').value.trim(), lastName:$('fLast').value.trim(),
     email:$('fEmail').value.trim().toLowerCase(), phone:$('fPhone').value.trim(),
@@ -1247,6 +1275,7 @@ function renderAdmin(){
 function renderAdminInPlace(){
   if (!adminUnlocked) return;
   renderAdminMetrics();
+  renderCheckInView();
   renderInventoryGrid();
   renderGroupedView();
   renderReservationsTable();
@@ -1256,9 +1285,11 @@ function renderAdminInPlace(){
 function renderAdminMetrics(){
   const totalCap=state.inventory.filter(s=>s.active).reduce((a,s)=>a+Number(s.capacity||0),0);
   const confirmed=state.reservations.filter(r=>r.status==='confirmed').length;
+  const checkedIn=state.reservations.filter(r=>r.status==='confirmed'&&r.checkedIn).length;
   const cancelled=state.reservations.filter(r=>r.status==='cancelled').length;
   $('adminMetrics').innerHTML=[
     ['Confirmed',confirmed,'var(--gl)','var(--gd)'],
+    ['Checked in',checkedIn,'var(--bl)','var(--bd)'],
     ['Available',Math.max(totalCap-confirmed,0),'var(--yl)','var(--yd)'],
     ['Cancelled',cancelled,'var(--ol)','var(--od)'],
     ['Total capacity',totalCap,'var(--bg)','var(--text)']
@@ -1351,6 +1382,59 @@ function renderGroupedView(){
 function toggleDateGroup(date){
   const el=document.getElementById('dg-'+date);
   if(el) el.classList.toggle('open');
+}
+
+// ── CHECK-IN / OPERATIONS ─────────────────────────────────────────────────────
+// Only confirmed reservations, grouped by day → lunch / dinner, ordered by time
+// then guest name, each with a check-in toggle for the door.
+function renderCheckInView(){
+  const confirmed=state.reservations.filter(r=>r.status==='confirmed');
+  const dates=[...new Set(confirmed.map(r=>r.date))].sort();
+  if(!dates.length){ $('checkInView').innerHTML='<div class="notice">No confirmed reservations yet.</div>'; return; }
+  const nameKey=r=>((r.lastName||'')+' '+(r.firstName||'')).toLowerCase();
+  const byTimeName=(a,b)=>a.time.localeCompare(b.time)||nameKey(a).localeCompare(nameKey(b));
+  const service=(label,list)=>{
+    const inCount=list.filter(r=>r.checkedIn).length;
+    const guests=list.length?list.map(r=>`
+      <div class="ci-guest${r.checkedIn?' done':''}">
+        <div class="ci-guest-main">
+          <span class="ci-guest-name">${esc(r.lastName)}, ${esc(r.firstName)}</span>
+          <span class="ci-guest-sub">${fmtTime(r.time)} · Party of ${r.party} · ${esc(r.code)}</span>
+        </div>
+        <button class="btn ${r.checkedIn?'success':'primary'}" style="font-size:11px;padding:5px 11px;white-space:nowrap" onclick="checkInGuest('${r.id}')">${r.checkedIn?'✓ In':'Check in'}</button>
+      </div>`).join(''):'<div style="font-size:12px;color:var(--text3);padding:6px 0">No reservations.</div>';
+    return `<div class="ci-service">
+      <div class="ci-service-hd"><span>${label}</span><b>${inCount}/${list.length} in</b></div>
+      ${guests}
+    </div>`;
+  };
+  $('checkInView').innerHTML=dates.map(date=>{
+    const dayRes=confirmed.filter(r=>r.date===date);
+    const lunch=dayRes.filter(r=>r.time<'15:00').sort(byTimeName);
+    const dinner=dayRes.filter(r=>r.time>='15:00').sort(byTimeName);
+    const dayIn=dayRes.filter(r=>r.checkedIn).length;
+    return `<div class="ci-day">
+      <div class="ci-day-hd"><span>${fmtDate(date)}</span><span class="ci-day-count">${dayIn}/${dayRes.length} checked in</span></div>
+      <div class="ci-day-body">${service('Lunch',lunch)}${service('Dinner',dinner)}</div>
+    </div>`;
+  }).join('');
+}
+
+async function checkInGuest(id){
+  const r=state.reservations.find(x=>x.id===id); if(!r) return;
+  r.checkedIn=!r.checkedIn;
+  r.checkedInAt=r.checkedIn?new Date().toISOString():null;
+  r.updatedAt=new Date().toISOString();
+  saveState();
+  renderCheckInView(); renderAdminMetrics();
+  if(API_URL){
+    await sync.push('check_in',{ id:r.id, checkedIn:r.checkedIn, checkedInAt:r.checkedInAt });
+    // Re-apply locally in case the server response doesn't carry the check-in flag.
+    const r2=state.reservations.find(x=>x.id===id);
+    if(r2 && r2.checkedIn!==r.checkedIn){ r2.checkedIn=r.checkedIn; r2.checkedInAt=r.checkedInAt; saveState(); }
+    renderCheckInView(); renderAdminMetrics();
+  }
+  toast(r.checkedIn?`Checked in — ${r.firstName} ${r.lastName}`:'Check-in undone.');
 }
 
 // ── FLAT RESERVATIONS TABLE ───────────────────────────────────────────────────
