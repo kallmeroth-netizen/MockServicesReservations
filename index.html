@@ -300,6 +300,7 @@ textarea{resize:vertical;min-height:68px}
 .tag.confirmed{background:var(--gl);color:var(--gd);border-color:rgba(123,189,145,.3)}
 .tag.cancelled{background:var(--ol);color:var(--od);border-color:rgba(232,113,66,.3)}
 .tag.modified{background:var(--bl);color:var(--bd);border-color:rgba(98,128,189,.3)}
+.dup-flag{display:inline-flex;align-items:center;gap:3px;background:var(--yl);color:var(--yd);border:.5px solid rgba(234,206,73,.5);border-radius:999px;padding:2px 7px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
 .mono{font-family:'DM Mono',monospace;font-size:11px}
 
 /* ── TOAST + MODAL ───────────────────────────────────────────────────────── */
@@ -578,7 +579,7 @@ textarea{resize:vertical;min-height:68px}
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────────────────────────
-const PASSWORD     = 'neighborly2026';
+const PASSWORD     = 'neighborly';
 const STORE        = 'nbly_reservations_v3';
 
 // Shared backend — paste your deployed Apps Script Web App URL here.
@@ -704,7 +705,15 @@ function defaultState(){
   };
 }
 function loadState(){
-  try{ const s=JSON.parse(localStorage.getItem(STORE)); return s&&s.inventory?s:defaultState(); }
+  try{
+    const s=JSON.parse(localStorage.getItem(STORE));
+    if(s&&s.inventory){
+      // Keep the team password in sync with the current build (no in-app editor).
+      if(s.settings) s.settings.password=PASSWORD;
+      return s;
+    }
+    return defaultState();
+  }
   catch(e){ return defaultState(); }
 }
 function saveState(){ localStorage.setItem(STORE,JSON.stringify(state)); }
@@ -1256,8 +1265,10 @@ async function confirmModify(){
 // ── ADMIN ─────────────────────────────────────────────────────────────────────
 async function unlockAdmin(){
   const pwd=$('adminPwd').value;
+  // Accept the current PASSWORD constant as well, so the live password always
+  // works even for returning visitors whose localStorage still holds an older one.
   const correct=state.settings.password||PASSWORD;
-  if(pwd!==correct){ toast('Incorrect password.'); return; }
+  if(pwd!==correct && pwd!==PASSWORD){ toast('Incorrect password.'); return; }
   adminUnlocked=true; $('adminPwd').value='';
   if (API_URL) await sync.pull();
   renderAdmin();
@@ -1287,11 +1298,13 @@ function renderAdminMetrics(){
   const confirmed=state.reservations.filter(r=>r.status==='confirmed').length;
   const checkedIn=state.reservations.filter(r=>r.status==='confirmed'&&r.checkedIn).length;
   const cancelled=state.reservations.filter(r=>r.status==='cancelled').length;
+  const dupCount=guestDupMap().size;
   $('adminMetrics').innerHTML=[
     ['Confirmed',confirmed,'var(--gl)','var(--gd)'],
     ['Checked in',checkedIn,'var(--bl)','var(--bd)'],
     ['Available',Math.max(totalCap-confirmed,0),'var(--yl)','var(--yd)'],
     ['Cancelled',cancelled,'var(--ol)','var(--od)'],
+    ['Possible duplicates',dupCount,dupCount?'var(--yl)':'var(--bg)',dupCount?'var(--yd)':'var(--text3)'],
     ['Total capacity',totalCap,'var(--bg)','var(--text)']
   ].map(([label,val,bg,color])=>`<div class="metric-card" style="background:${bg}"><b style="color:${color}">${val}</b><span>${label}</span></div>`).join('');
 }
@@ -1329,7 +1342,34 @@ function loadSlotForEdit(id){
 function toggleSlot(id){ const s=state.inventory.find(x=>x.id===id); if(s){ s.active=!s.active; saveState(); renderAdmin(); } }
 
 // ── GROUPED VIEW ──────────────────────────────────────────────────────────────
+// ── DUPLICATE GUEST DETECTION ─────────────────────────────────────────────────
+// Flags confirmed reservations that look like the same guest booked twice —
+// matched independently on email, phone, or full name. Cancelled reservations
+// (e.g. the auto-cancelled prior booking on a re-submit) are intentionally
+// ignored so they don't show up as false positives.
+function guestDupMap(){
+  const confirmed=state.reservations.filter(r=>r.status==='confirmed');
+  const accessors={
+    email:r=>(r.email||'').trim().toLowerCase(),
+    phone:r=>(r.phone||'').replace(/\D/g,''),
+    name :r=>{ const f=(r.firstName||'').trim().toLowerCase(), l=(r.lastName||'').trim().toLowerCase(); return (f||l)?f+' '+l:''; }
+  };
+  const reasons=new Map(); // reservation id -> Set of match reasons
+  for(const key of Object.keys(accessors)){
+    const groups={};
+    confirmed.forEach(r=>{ const k=accessors[key](r); if(!k) return; (groups[k]=groups[k]||[]).push(r); });
+    Object.values(groups).forEach(g=>{ if(g.length>1) g.forEach(r=>{ const s=reasons.get(r.id)||new Set(); s.add(key); reasons.set(r.id,s); }); });
+  }
+  return reasons;
+}
+function dupBadge(reasons){
+  if(!reasons||!reasons.size) return '';
+  const by=[...reasons].join(', ');
+  return ` <span class="dup-flag" title="Possible duplicate guest — matches another confirmed reservation by ${by}">⚠ Possible duplicate · ${by}</span>`;
+}
+
 function renderGroupedView(){
+  const dupMap=guestDupMap();
   const dates=[...new Set(state.inventory.filter(s=>s.active).map(s=>s.date))].sort();
   if(!dates.length){ $('groupedView').innerHTML='<div class="notice">No inventory configured.</div>'; return; }
   $('groupedView').innerHTML = dates.map(date=>{
@@ -1352,7 +1392,7 @@ function renderGroupedView(){
       }).join('');
       const guestRows=timeResConf.length?`<div class="mini-guests">${timeResConf.map(r=>`
         <div class="mini-guest">
-          <span class="mini-guest-name">${esc(r.firstName)} ${esc(r.lastName)}</span>
+          <span class="mini-guest-name">${esc(r.firstName)} ${esc(r.lastName)}${dupBadge(dupMap.get(r.id))}</span>
           <span class="mini-guest-detail">Party of ${r.party} · ${esc(r.email)}</span>
           <div style="display:flex;gap:5px;align-items:center">
             <span class="tag ${r.status}">${r.status}</span>
@@ -1389,6 +1429,7 @@ function toggleDateGroup(date){
 // then guest name, each with a check-in toggle for the door.
 function renderCheckInView(){
   const confirmed=state.reservations.filter(r=>r.status==='confirmed');
+  const dupMap=guestDupMap();
   const dates=[...new Set(confirmed.map(r=>r.date))].sort();
   if(!dates.length){ $('checkInView').innerHTML='<div class="notice">No confirmed reservations yet.</div>'; return; }
   const nameKey=r=>((r.lastName||'')+' '+(r.firstName||'')).toLowerCase();
@@ -1398,7 +1439,7 @@ function renderCheckInView(){
     const guests=list.length?list.map(r=>`
       <div class="ci-guest${r.checkedIn?' done':''}">
         <div class="ci-guest-main">
-          <span class="ci-guest-name">${esc(r.lastName)}, ${esc(r.firstName)}</span>
+          <span class="ci-guest-name">${esc(r.lastName)}, ${esc(r.firstName)}${dupBadge(dupMap.get(r.id))}</span>
           <span class="ci-guest-sub">${fmtTime(r.time)} · Party of ${r.party} · ${esc(r.code)}</span>
         </div>
         <button class="btn ${r.checkedIn?'success':'primary'}" style="font-size:11px;padding:5px 11px;white-space:nowrap" onclick="checkInGuest('${r.id}')">${r.checkedIn?'✓ In':'Check in'}</button>
@@ -1439,6 +1480,7 @@ async function checkInGuest(id){
 
 // ── FLAT RESERVATIONS TABLE ───────────────────────────────────────────────────
 function renderReservationsTable(filter){
+  const dupMap=guestDupMap();
   let rows=[...state.reservations].sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
   if(filter) rows=rows.filter(r=>r.status===filter);
   $('reservationsTable').innerHTML=`<div style="overflow:auto"><table class="dtable">
@@ -1446,7 +1488,7 @@ function renderReservationsTable(filter){
     <tbody>${rows.map(r=>`<tr>
       <td><span class="tag ${r.status}">${r.status}</span></td>
       <td class="mono">${esc(r.code)}</td>
-      <td><strong style="color:var(--text)">${esc(r.firstName)} ${esc(r.lastName)}</strong><br>${esc(r.email)}${r.phone?'<br>'+esc(r.phone):''}${r.source?'<br><span style="font-size:11px;color:var(--text3)">'+esc(r.source)+'</span>':''}</td>
+      <td><strong style="color:var(--text)">${esc(r.firstName)} ${esc(r.lastName)}</strong>${dupBadge(dupMap.get(r.id))}<br>${esc(r.email)}${r.phone?'<br>'+esc(r.phone):''}${r.source?'<br><span style="font-size:11px;color:var(--text3)">'+esc(r.source)+'</span>':''}</td>
       <td>${fmtShort(r.date)}<br>${fmtTime(r.time)}</td>
       <td>${r.party}</td>
       <td style="max-width:180px;word-break:break-word">${esc(r.notes||'—')}</td>
