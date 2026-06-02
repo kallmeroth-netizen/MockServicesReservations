@@ -170,6 +170,7 @@ main{min-height:calc(100vh - 80px)}
 .step{display:none}
 .step.active{display:block;animation:bounceIn .45s cubic-bezier(.34,1.56,.64,1) both}
 .field-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.time-section-label{grid-column:1/-1;font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--text3);margin:12px 0 4px;padding-bottom:6px;border-bottom:.5px solid var(--border)}
 .fl-main{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text)}
 .fl-hint{font-size:11.5px;color:var(--text3)}
 
@@ -812,12 +813,15 @@ function selectParty(p){ booking.party=p; booking.time=null; setStep(3); }
 function renderTimeChoices(){
   if(!booking.date||!booking.party){ $('timeChoices').innerHTML='<div class="notice">Choose a date and party size first.</div>'; return; }
   const times=availableTimes(booking.date,booking.party);
-  $('timeChoices').innerHTML = times.length ? times.map(t=>{
+  $('timeChoices').innerHTML = times.length ? times.reduce((html,t,i)=>{
     const c=countsFor(booking.date,booking.party,t);
-    return `<button class="choice-card${booking.time===t?' selected':''}"`+(c.available<1?' disabled':'')+` onclick="selectTime('${t}')">
+    const toMin=s=>{const [h,m]=s.split(':').map(Number);return h*60+m;};
+    const gap=i>0?toMin(t)-toMin(times[i-1]):0;
+    const label=i===0?'<div class="time-section-label">Lunch</div>':gap>90?'<div class="time-section-label">Dinner</div>':'';
+    return html+label+`<button class="choice-card${booking.time===t?' selected':''}"` + (c.available<1?' disabled':'')+` onclick="selectTime('${t}')">
       <strong>${fmtTime(t)}</strong>
     </button>`;
-  }).join('') : '<div class="notice warn">No times available for this selection.</div>';
+  },'') : '<div class="notice warn">No times available for this selection.</div>';
 }
 function selectTime(t){ booking.time=t; setStep(4); }
 
