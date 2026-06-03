@@ -133,13 +133,13 @@ nav.top-nav{position:sticky;top:0;z-index:100;height:50px;display:flex;align-ite
 .top-tab.active{background:var(--ol);color:var(--od)}
 
 /* ── PAGE ROUTING ─────────────────────────────────────────────────────────── */
-main{min-height:calc(100vh - 80px)}
+main{}
 .page{display:none;padding:1.5rem}
 .page.active{display:block;animation:rise .5s cubic-bezier(.34,1.56,.64,1) both}
 @keyframes rise{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
 
 /* ── SHELL (2-panel) ─────────────────────────────────────────────────────── */
-.shell{width:min(1320px,100%);margin:0 auto;min-height:calc(100vh - 80px - 3rem);display:grid;grid-template-columns:.52fr .48fr;border:.5px solid var(--border-strong);border-radius:28px;overflow:hidden;background:var(--surface);box-shadow:0 8px 40px rgba(0,0,0,.08)}
+.shell{width:min(1320px,100%);margin:0 auto;display:grid;grid-template-columns:.52fr .48fr;border:.5px solid var(--border-strong);border-radius:28px;overflow:hidden;background:var(--surface);box-shadow:0 8px 40px rgba(0,0,0,.08)}
 .editorial{position:relative;overflow:hidden;background:#1A1916;color:#fff;display:flex;flex-direction:column}
 .editorial::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at 18% 88%,rgba(232,113,66,.35),transparent 55%),radial-gradient(circle at 88% 12%,rgba(232,113,66,.18),transparent 50%);pointer-events:none;z-index:0}
 .ed-inner{position:relative;z-index:2}
@@ -164,7 +164,7 @@ main{min-height:calc(100vh - 80px)}
 .progress-bars{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:16px}
 .progress-bars span{height:3px;border-radius:999px;background:var(--border-strong);transition:background .3s}
 .progress-bars span.on{background:var(--orange);animation:bouncePop .55s cubic-bezier(.34,1.56,.64,1) both}
-.panel-body{padding:14px clamp(14px,2.45vw,28px) 22px;flex:1;display:flex;flex-direction:column;gap:16px}
+.panel-body{padding:14px clamp(14px,2.45vw,28px) 22px;flex:0 0 auto;display:flex;flex-direction:column;gap:16px}
 
 /* ── STEPS ───────────────────────────────────────────────────────────────── */
 .step{display:none}
