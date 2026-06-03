@@ -202,11 +202,11 @@ textarea{resize:vertical;min-height:68px}
 .btn{border:.5px solid var(--border-strong);border-radius:999px;padding:8px 15px;font-size:12.5px;font-weight:500;background:var(--surface);color:var(--text);transition:background .18s,border-color .18s,transform .3s cubic-bezier(.34,1.56,.64,1),box-shadow .22s;white-space:nowrap}
 .btn:hover:not(:disabled){background:var(--surface2);border-color:var(--text);transform:translateY(-1px)}
 .btn:active:not(:disabled){transform:translateY(0) scale(.97);transition:transform .08s}
-.btn.primary{background:var(--orange);color:#fff;border-color:var(--orange);box-shadow:0 4px 14px rgba(232,113,66,.28)}
-.btn.primary:hover:not(:disabled){background:#d6602e;border-color:#d6602e;box-shadow:0 8px 22px rgba(232,113,66,.38);transform:translateY(-2px) scale(1.02)}
-.btn.danger{background:var(--surface);color:var(--od);border-color:rgba(232,113,66,.3)}
+.btn.primary{background:var(--orange);color:var(--text);border-color:rgba(26,25,22,.22);box-shadow:0 4px 14px rgba(232,113,66,.28)}
+.btn.primary:hover:not(:disabled){background:#d6602e;border-color:rgba(26,25,22,.34);box-shadow:0 8px 22px rgba(232,113,66,.38);transform:translateY(-2px) scale(1.02)}
+.btn.danger{background:var(--surface);color:var(--text);border-color:rgba(232,113,66,.3)}
 .btn.danger:hover:not(:disabled){background:#fad8cc;border-color:var(--od);transform:translateY(-1px)}
-.btn.success{background:var(--gl);color:var(--gd);border-color:rgba(123,189,145,.3)}
+.btn.success{background:var(--gl);color:var(--text);border-color:rgba(123,189,145,.3)}
 .btn.success:hover:not(:disabled){background:#c4e9d2;border-color:var(--gd);transform:translateY(-1px)}
 .btn:disabled{opacity:.38;cursor:not-allowed}
 @keyframes bouncePop{
@@ -324,6 +324,17 @@ textarea{resize:vertical;min-height:68px}
   .admin-metrics{grid-template-columns:repeat(2,1fr)}
   .page{padding:1rem}
   .choice-grid.c2{grid-template-columns:1fr}
+  nav.top-nav{padding:0 1.1rem}
+  .editorial{min-height:330px}
+  /* Calmer, viewport-aware hero so long titles don't crowd the panel on phones */
+  .hero-title{font-size:clamp(40px,12vw,58px);line-height:.96}
+  .hero-note{font-size:13.5px;line-height:1.6;margin-top:14px}
+  .panel-title{font-size:clamp(30px,8.5vw,40px)}
+  .panel-top{padding-bottom:16px}
+  .panel-body{gap:14px}
+  .confirm-title{font-size:clamp(40px,12vw,56px)}
+  .sbox{padding:15px}
+  .srow{padding:8px 0}
 }
 
 /* ── INVENTORY GRID ──────────────────────────────────────────────────────── */
