@@ -22,7 +22,7 @@ function renderInventoryGrid(){
     for(let h=start;h<=end;h++) for(let m=0;m<60;m+=15){
       if(h===end&&m>0) break;
       arr.push(String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'));
-    
+    }
   });
 
   function makeServiceBlock(date,times,label){
