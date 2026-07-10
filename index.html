@@ -418,7 +418,20 @@ textarea{resize:vertical;min-height:68px}
 .ci-guest-main{display:flex;flex-direction:column;gap:1px;min-width:0}
 .ci-guest-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ci-guest-sub{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace}
-@media(max-width:700px){.ci-day-body{grid-template-columns:1fr}.ci-service+.ci-service{border-left:none;border-top:.5px solid var(--border)}}
+/* Check-in console toolbar */
+.ci-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ci-days{display:flex;flex-wrap:wrap;gap:6px}
+.ci-daychip{border:.5px solid var(--border-strong);background:var(--surface);color:var(--text2);border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;letter-spacing:.01em;transition:background .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease)}
+.ci-daychip:hover{border-color:var(--text);color:var(--text)}
+.ci-daychip.active{background:var(--dark);color:#fff;border-color:var(--dark)}
+.ci-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ci-tools input[type=text],.ci-tools input:not([type]){width:200px;padding:8px 14px;font-size:12.5px}
+.ci-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);white-space:nowrap;cursor:pointer}
+.ci-toggle input{width:auto;margin:0}
+.ci-arrival{height:4px;background:rgba(255,255,255,.16);position:relative}
+.ci-arrival-bar{position:absolute;inset:0 auto 0 0;background:var(--green);transition:width .5s var(--ease)}
+.ci-guest .btn{min-width:78px}
+@media(max-width:700px){.ci-day-body{grid-template-columns:1fr}.ci-service+.ci-service{border-left:none;border-top:.5px solid var(--border)}.ci-tools input[type=text],.ci-tools input:not([type]){width:100%}.ci-tools{width:100%}}
 
 /* ── HORIZONTAL SCROLL (wide containers) ────────────────────────────────────── */
 .inv-day-body,.inv-service-block table,.time-grid-inner,.time-section{overflow-x:auto}
@@ -592,9 +605,19 @@ textarea{resize:vertical;min-height:68px}
     </div>
     <!-- Metrics -->
     <div class="admin-metrics" id="adminMetrics"></div>
+    <!-- Data storage -->
+    <div class="admin-section">
+      <div class="admin-section-title">Data storage <span style="font-size:12px;font-weight:400;color:var(--text3)">Connect Firebase to store reservations in the cloud and sync live across devices</span></div>
+      <div id="firebaseConfig"></div>
+    </div>
+    <!-- Email delivery -->
+    <div class="admin-section">
+      <div class="admin-section-title">Email delivery <span style="font-size:12px;font-weight:400;color:var(--text3)">Connect EmailJS to actually send confirmation emails</span></div>
+      <div id="emailConfig"></div>
+    </div>
     <!-- Check-in / operations -->
     <div class="admin-section">
-      <div class="admin-section-title">Check-in <span style="font-size:12px;font-weight:400;color:var(--text3)">Confirmed guests by day, lunch &amp; dinner — sorted by time &amp; name</span></div>
+      <div class="admin-section-title">Check-in <span style="font-size:12px;font-weight:400;color:var(--text3)">Filter by day, sorted by time — tap to check a guest in as they arrive</span></div>
       <div id="checkInView"></div>
     </div>
     <!-- Inventory setup -->
@@ -705,6 +728,69 @@ const sync = {
   }
 };
 
+// ── FIREBASE STORAGE (optional cloud backend) ────────────────────────────────
+// Stores the whole app state in one Firestore document (neighborly/state) and
+// keeps every device in sync in real time. The operator pastes their Firebase
+// config in the team portal; the modular SDK is imported on demand so the page
+// stays light when Firebase isn't used. When connected, every saveState mirrors
+// to the cloud and remote changes stream back via onSnapshot.
+const fbSync = {
+  ready:false, app:null, db:null, api:null, unsub:null, writing:false, timer:null, err:'',
+  parseConfig(text){
+    let t=(text||'').trim(); if(!t) return null;
+    const i=t.indexOf('{'), j=t.lastIndexOf('}'); if(i<0||j<0) return null;
+    t=t.slice(i,j+1);
+    try{ return JSON.parse(t); }catch(e){}
+    // Tolerate the JS object literal the Firebase console shows (unquoted keys,
+    // single quotes, trailing commas) by normalising to JSON — no eval.
+    try{
+      const n=t.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g,'$1"$2":').replace(/'/g,'"').replace(/,\s*([}\]])/g,'$1');
+      return JSON.parse(n);
+    }catch(e){ return null; }
+  },
+  config(){ return fbSync.parseConfig(state.settings && state.settings.firebase); },
+  connected(){ return !!fbSync.ready; },
+  async connect(){
+    const cfg=fbSync.config();
+    if(!cfg || !cfg.projectId || !cfg.apiKey){ fbSync.err='Config needs at least projectId and apiKey.'; return false; }
+    try{
+      const V='10.12.2';
+      const [appMod, fsMod]=await Promise.all([
+        import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`),
+        import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`)
+      ]);
+      fbSync.app=appMod.initializeApp(cfg);
+      fbSync.db =fsMod.getFirestore(fbSync.app);
+      fbSync.api=fsMod;
+      const ref=fsMod.doc(fbSync.db,'neighborly','state');
+      const snap=await fsMod.getDoc(ref);
+      fbSync.ready=true; fbSync.err='';
+      if(snap.exists() && snap.data() && snap.data().state){
+        state=snap.data().state; saveLocal();          // adopt the shared cloud state
+        if(adminUnlocked) renderAdminInPlace(); else route();
+      } else {
+        await fbSync.write();                            // seed the cloud from this device
+      }
+      fbSync.unsub=fsMod.onSnapshot(ref, s=>{           // live updates from other devices
+        if(fbSync.writing) return;
+        const d=s.data();
+        if(d && d.state){ state=d.state; saveLocal(); if(adminUnlocked) renderAdminInPlace(); }
+      });
+      return true;
+    }catch(e){ fbSync.ready=false; fbSync.err=(e&&e.message)||'connection failed'; return false; }
+  },
+  disconnect(){ try{ if(fbSync.unsub) fbSync.unsub(); }catch(e){} fbSync.unsub=null; fbSync.ready=false; },
+  scheduleWrite(){ if(!fbSync.ready) return; clearTimeout(fbSync.timer); fbSync.timer=setTimeout(fbSync.write,350); },
+  async write(){
+    if(!fbSync.ready) return;
+    const {doc,setDoc}=fbSync.api;
+    fbSync.writing=true;
+    try{ await setDoc(doc(fbSync.db,'neighborly','state'),{ state, updatedAt:Date.now() }); }
+    catch(e){ fbSync.err=(e&&e.message)||'write failed'; }
+    finally{ setTimeout(()=>{ fbSync.writing=false; },500); }
+  }
+};
+
 // Pull fresh state when the tab becomes visible again
 document.addEventListener('visibilitychange', ()=>{
   if (!document.hidden && API_URL) sync.pull().then(ok => {
@@ -718,6 +804,7 @@ document.addEventListener('visibilitychange', ()=>{
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let adminUnlocked = false;
+let _ciDay='all', _ciQuery='', _ciHideIn=false;
 let state = loadState();
 let booking = { step:1, date:null, party:null, time:null };
 let modCtx  = { reservationId:null, step:1, date:null, party:null, time:null };
@@ -750,7 +837,7 @@ function defaultState(){
   })));
   return {
     inventory, reservations:[], emails:[],
-    settings:{ location:'Neighborly Studio City', eventName:'VIP Preview Event', password:PASSWORD }
+    settings:{ location:'Neighborly Studio City', eventName:'VIP Preview Event', password:PASSWORD, emailjs:{ service:EJS_SERVICE, template:EJS_TEMPLATE, publicKey:EJS_KEY }, firebase:'' }
   };
 }
 function loadState(){
@@ -759,13 +846,18 @@ function loadState(){
     if(s&&s.inventory){
       // Keep the team password in sync with the current build (no in-app editor).
       if(s.settings) s.settings.password=PASSWORD;
+      // Backfill email delivery config for state saved before it existed.
+      if(s.settings && !s.settings.emailjs) s.settings.emailjs={ service:EJS_SERVICE, template:EJS_TEMPLATE, publicKey:EJS_KEY };
+      if(s.settings && s.settings.firebase===undefined) s.settings.firebase='';
       return s;
     }
     return defaultState();
   }
   catch(e){ return defaultState(); }
 }
-function saveState(){ localStorage.setItem(STORE,JSON.stringify(state)); }
+function saveLocal(){ localStorage.setItem(STORE,JSON.stringify(state)); }
+// saveState persists locally and mirrors to the cloud (Firestore) when connected.
+function saveState(){ saveLocal(); if(typeof fbSync!=='undefined' && fbSync.ready) fbSync.scheduleWrite(); }
 
 // ── ROUTING ──────────────────────────────────────────────────────────────────
 function go(route,params=''){
@@ -776,6 +868,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   if (!location.hash) go('welcome');
   if (API_URL) {
     try { await sync.pull(); } catch(e){}
+  }
+  if (fbSync.config()) {
+    try { await fbSync.connect(); } catch(e){}
   }
   route();
 });
@@ -813,33 +908,44 @@ function renderWelcome(){
 // ── BOOKING FLOW ──────────────────────────────────────────────────────────────
 function renderBooking(){ setStep(booking.step||1,false); }
 
-let _stepTransitioning=false;
+let _stepToken=0;
 function setStep(n,load=true){
   const prev=booking.step;
   booking.step=n;
   if(!load || prev===n){ updateStepUI(); return; }
-  if(_stepTransitioning) return;
-  _stepTransitioning=true;
+  const token=++_stepToken;                       // only the latest transition applies
   const top=document.querySelector('#page-book .panel-top');
   const body=document.querySelector('#page-book .panel-body');
   if(top) top.classList.add('leaving');
   if(body) body.classList.add('leaving');
   setTimeout(()=>{
-    updateStepUI();
-    if(top) top.classList.remove('leaving');
-    if(body) body.classList.remove('leaving');
-    _stepTransitioning=false;
-  },300);
+    if(token!==_stepToken) return;                // superseded by a newer step change
+    try{ updateStepUI(); }
+    finally{                                       // never leave the panel hidden/blocked
+      if(top) top.classList.remove('leaving');
+      if(body) body.classList.remove('leaving');
+      bringBookingIntoView();
+    }
+  },240);
+}
+// Keep the active step + its action buttons in view on stacked/mobile layouts
+function bringBookingIntoView(){
+  if(window.innerWidth>900) return;
+  const panel=document.querySelector('#page-book .booking-panel');
+  if(!panel) return;
+  const top=panel.getBoundingClientRect().top;
+  if(top<44 || top>160){ window.scrollTo({top:window.scrollY+top-52,behavior:'smooth'}); }
 }
 // Lock in the chosen card, let the others recede, then glide to the next step
 function advanceTo(el,n){
   if(el){
     const grid=el.parentElement;
+    if(grid.classList.contains('locking')) return; // ignore double-taps mid-lock
     grid.querySelectorAll('.choice-card').forEach(c=>c.classList.remove('selected'));
     el.classList.add('selected');
     grid.classList.add('locking');
   }
-  setTimeout(()=>setStep(n),520);
+  setTimeout(()=>setStep(n),380);
 }
 function backStep(){ if(booking.step>1) setStep(booking.step-1); }
 
@@ -981,18 +1087,26 @@ function captureEmail(r){
   else state.emails.push({id:uid('em'),type:'capture',email:r.email,firstName:r.firstName,lastName:r.lastName,phone:r.phone,source:r.source,lastCode:r.code,createdAt:new Date().toISOString()});
 }
 
+// Resolve the active EmailJS credentials (team-portal settings win over build defaults).
+function emailCfg(){
+  const c=(state.settings&&state.settings.emailjs)||{};
+  return { service:(c.service||EJS_SERVICE||'').trim(), template:(c.template||EJS_TEMPLATE||'').trim(), publicKey:(c.publicKey||EJS_KEY||'').trim() };
+}
+function emailConnected(){ const c=emailCfg(); return !!(c.service&&c.template&&c.publicKey&&window.emailjs); }
+
 async function sendEmail(type,r){
   const content=emailContent(type,r);
   const record={id:uid('mail'),type,reservationId:r.id,code:r.code,to:r.email,subject:content.subject,body:content.body,status:'logged',createdAt:new Date().toISOString()};
-  if(EJS_SERVICE&&EJS_TEMPLATE&&EJS_KEY){
+  const cfg=emailCfg();
+  if(cfg.service&&cfg.template&&cfg.publicKey&&window.emailjs){
     try{
-      await emailjs.send(EJS_SERVICE,EJS_TEMPLATE,{
+      await emailjs.send(cfg.service,cfg.template,{
         to_email:r.email, to_name:r.firstName, subject:content.subject, message:content.body,
         confirmation_code:r.code, reservation_date:fmtDate(r.date), reservation_time:fmtTime(r.time),
         party_size:r.party, location:state.settings.location
-      });
+      },{publicKey:cfg.publicKey});
       record.status='sent';
-    }catch(e){ record.status='failed'; record.error=e.message; }
+    }catch(e){ record.status='failed'; record.error=(e&&(e.text||e.message))||'send failed'; }
   }
   state.emails.push(record);
   return record;
@@ -1005,7 +1119,7 @@ function renderConfirmation(id){
   $('confirmContent').innerHTML=`
     <div class="confirm-eyebrow">Reservation confirmed</div>
     <div class="confirm-title">We saved<br>your seat.</div>
-    <p style="font-size:13.5px;color:var(--text2);line-height:1.6">A confirmation email has been logged for <strong>${esc(r.email)}</strong>. Save your code to manage this reservation.</p>
+    <p style="font-size:13.5px;color:var(--text2);line-height:1.6">A confirmation email has been ${emailConnected()?'sent':'logged'} for <strong>${esc(r.email)}</strong>. Save your code to manage this reservation.</p>
     <div class="code-pill"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>${esc(r.code)}</div>
     <div class="sbox">
       <div class="srow"><span>Name</span><strong>${esc(r.firstName)} ${esc(r.lastName)}</strong></div>
@@ -1397,11 +1511,116 @@ function renderAdmin(){
 function renderAdminInPlace(){
   if (!adminUnlocked) return;
   renderAdminMetrics();
+  renderFirebaseConfig();
+  renderEmailConfig();
   renderCheckInView();
   renderInventoryGrid();
   renderGroupedView();
   renderReservationsTable();
   renderEmailsTable();
+}
+
+// ── DATA STORAGE (Firebase) ──────────────────────────────────────────────────
+function renderFirebaseConfig(){
+  const wrap=$('firebaseConfig'); if(!wrap) return;
+  const ae=document.activeElement;
+  if(ae && ae.id==='fbConfigInput') return;   // don't stomp the operator mid-paste
+  const raw=(state.settings&&state.settings.firebase)||'';
+  const connected=fbSync.connected();
+  wrap.innerHTML=`
+    <div class="notice ${connected?'ok':(fbSync.err?'warn':'info')}" style="margin-bottom:12px">
+      ${connected
+        ? '✓ Connected to Firebase — reservations, capacity and check-ins are stored in the cloud and sync live across every device.'
+        : (fbSync.err ? 'Not connected — '+esc(fbSync.err) : 'Not connected — data is saved only in this browser. Paste your Firebase config to store it in the cloud and share it across devices.')}
+    </div>
+    <label class="full"><span class="f-lbl">Firebase config</span>
+      <textarea id="fbConfigInput" rows="7" style="font-family:'DM Mono',monospace;font-size:12px;line-height:1.5" placeholder='{&#10;  "apiKey": "…",&#10;  "authDomain": "your-app.firebaseapp.com",&#10;  "projectId": "your-app",&#10;  "appId": "…"&#10;}'>${esc(raw)}</textarea></label>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary" onclick="saveFirebaseConfig()">${connected?'Reconnect':'Save & connect'}</button>
+      ${connected?`<button class="btn" onclick="pushLocalToCloud()">Push this device's data to cloud</button>`:''}
+      ${connected?`<button class="btn danger" onclick="disconnectFirebase()">Disconnect</button>`:''}
+      <a class="btn" href="https://console.firebase.google.com/" target="_blank" rel="noopener">Firebase console ↗</a>
+    </div>
+    <p style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:10px">
+      In the Firebase console: create a project → add a <b>Web app</b> → copy the <span class="mono">firebaseConfig</span> object and paste it above.
+      Turn on <b>Firestore Database</b>. The whole app state lives in the <span class="mono">neighborly/state</span> document; every device that loads this config reads and writes it live.
+      For a quick start, set Firestore rules to allow read/write — then tighten them before a real launch.</p>`;
+}
+async function saveFirebaseConfig(){
+  const raw=$('fbConfigInput').value.trim();
+  const cfg=fbSync.parseConfig(raw);
+  if(raw && !cfg){ toast('Could not read that config — paste the firebaseConfig object from the console.'); return; }
+  state.settings.firebase = cfg ? JSON.stringify(cfg,null,2) : '';
+  saveLocal();
+  fbSync.disconnect();
+  if(cfg){
+    toast('Connecting to Firebase…');
+    const ok=await fbSync.connect();
+    toast(ok ? 'Connected to Firebase.' : ('Firebase: '+(fbSync.err||'connection failed')));
+  } else {
+    toast('Firebase disconnected.');
+  }
+  renderFirebaseConfig();
+}
+function disconnectFirebase(){ fbSync.disconnect(); renderFirebaseConfig(); toast('Disconnected — data stays in this browser.'); }
+async function pushLocalToCloud(){
+  if(!fbSync.connected()){ toast('Connect Firebase first.'); return; }
+  await fbSync.write();
+  toast("Pushed this device's data to the cloud.");
+}
+
+// ── EMAIL DELIVERY (EmailJS) ─────────────────────────────────────────────────
+function renderEmailConfig(){
+  const wrap=$('emailConfig'); if(!wrap) return;
+  // Don't stomp on the operator mid-type (background polls re-render the admin),
+  // but still allow explicit re-renders triggered from the panel's buttons.
+  const ae=document.activeElement;
+  if(ae && ae.tagName==='INPUT' && ae.closest && ae.closest('#emailConfig')) return;
+  const c=emailCfg();
+  const connected=emailConnected();
+  const lastSent=[...state.emails].reverse().find(e=>e.status==='sent'||e.status==='failed');
+  wrap.innerHTML=`
+    <div class="notice ${connected?'ok':'info'}" style="margin-bottom:12px">
+      ${connected
+        ? '✓ Connected — confirmation, cancellation and modification emails are sent automatically via EmailJS.'
+        : 'Not connected — emails are logged in the console below but not delivered. Add your EmailJS keys to start sending.'}
+      ${lastSent?`<div style="margin-top:6px;font-size:12px;color:var(--text3)">Last delivery attempt: ${lastSent.status==='sent'?'sent':'failed'} → ${esc(lastSent.to)}${lastSent.error?' ('+esc(lastSent.error)+')':''}</div>`:''}
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <label class="full" style="grid-column:span 1"><span class="f-lbl">Service ID</span><input id="ejsService" placeholder="service_xxxxxxx" value="${esc(c.service)}"></label>
+      <label class="full" style="grid-column:span 1"><span class="f-lbl">Template ID</span><input id="ejsTemplate" placeholder="template_xxxxxxx" value="${esc(c.template)}"></label>
+      <label class="full" style="grid-column:span 1"><span class="f-lbl">Public key</span><input id="ejsKey" placeholder="XXXXXXXXXXXXXX" value="${esc(c.publicKey)}"></label>
+      <label class="full"><span class="f-lbl">Send a test to</span><input id="ejsTest" type="email" placeholder="you@restaurant.com"></label>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary" onclick="saveEmailConfig()">Save & connect</button>
+      <button class="btn" onclick="sendTestEmail()">Send test email</button>
+      <a class="btn" href="https://dashboard.emailjs.com/admin" target="_blank" rel="noopener">Open EmailJS ↗</a>
+    </div>
+    <p style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:10px">
+      Create a free account at emailjs.com, add an email service and a template, then paste the three IDs above.
+      Your template can use these variables: <span class="mono">to_email, to_name, subject, message, confirmation_code, reservation_date, reservation_time, party_size, location</span>.
+    </p>`;
+}
+function saveEmailConfig(){
+  const service=$('ejsService').value.trim(), template=$('ejsTemplate').value.trim(), publicKey=$('ejsKey').value.trim();
+  state.settings.emailjs={ service, template, publicKey };
+  saveState();
+  if(publicKey && window.emailjs){ try{ emailjs.init({publicKey}); }catch(e){} }
+  renderEmailConfig();
+  toast(service&&template&&publicKey ? 'Email delivery connected.' : 'Email settings saved.');
+}
+async function sendTestEmail(){
+  const cfg=emailCfg();
+  if(!(cfg.service&&cfg.template&&cfg.publicKey)){ toast('Enter and save your EmailJS keys first.'); return; }
+  const to=($('ejsTest').value||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)){ toast('Enter a valid test email address.'); return; }
+  if(!window.emailjs){ toast('EmailJS library not loaded.'); return; }
+  toast('Sending test email…');
+  const testRes={ id:'test', code:'TEST-0000', firstName:'Team', lastName:'Test', email:to, date:new Date().toISOString().slice(0,10), time:'12:00', party:2 };
+  const record=await sendEmail('confirmation', testRes);
+  saveState(); renderEmailConfig(); renderEmailsTable();
+  toast(record.status==='sent' ? `Test email sent to ${to}.` : `Test failed: ${record.error||'unknown error'}`);
 }
 
 function renderAdminMetrics(){
@@ -1538,35 +1757,68 @@ function toggleDateGroup(date){
 // ── CHECK-IN / OPERATIONS ─────────────────────────────────────────────────────
 // Only confirmed reservations, grouped by day → lunch / dinner, ordered by time
 // then guest name, each with a check-in toggle for the door.
+// Build the check-in console shell (day filter + search + toggle), then the list.
+// Skips rebuilding the toolbar while the operator is typing in search so focus
+// and caret survive background sync polls.
 function renderCheckInView(){
-  const confirmed=state.reservations.filter(r=>r.status==='confirmed');
+  const wrap=$('checkInView'); if(!wrap) return;
+  const dates=[...new Set(state.reservations.filter(r=>r.status==='confirmed').map(r=>r.date))].sort();
+  if(_ciDay!=='all' && !dates.includes(_ciDay)) _ciDay='all';
+  const searchFocused=document.activeElement && document.activeElement.id==='ciSearch';
+  if(!document.getElementById('ciList') || !searchFocused){
+    wrap.innerHTML=`
+      <div class="ci-toolbar">
+        <div class="ci-days">
+          <button class="ci-daychip${_ciDay==='all'?' active':''}" onclick="setCiDay('all')">All days</button>
+          ${dates.map(d=>`<button class="ci-daychip${_ciDay===d?' active':''}" onclick="setCiDay('${d}')">${fmtShort(d)}</button>`).join('')}
+        </div>
+        <div class="ci-tools">
+          <input id="ciSearch" type="text" placeholder="Search name or code…" value="${esc(_ciQuery)}" oninput="_ciQuery=this.value;renderCheckInList()">
+          <label class="ci-toggle"><input type="checkbox" ${_ciHideIn?'checked':''} onchange="_ciHideIn=this.checked;renderCheckInList()">Hide checked-in</label>
+        </div>
+      </div>
+      <div id="ciList"></div>`;
+  }
+  renderCheckInList();
+}
+function setCiDay(d){ _ciDay=d; document.querySelectorAll('.ci-daychip').forEach(c=>c.classList.remove('active')); renderCheckInView(); }
+
+function renderCheckInList(){
+  const list=$('ciList'); if(!list) return;
   const dupMap=guestDupMap();
+  let confirmed=state.reservations.filter(r=>r.status==='confirmed');
+  if(_ciDay!=='all') confirmed=confirmed.filter(r=>r.date===_ciDay);
+  const q=_ciQuery.trim().toLowerCase();
+  if(q) confirmed=confirmed.filter(r=>(((r.firstName||'')+' '+(r.lastName||'')).toLowerCase().includes(q)||(r.code||'').toLowerCase().includes(q)||(r.email||'').toLowerCase().includes(q)));
   const dates=[...new Set(confirmed.map(r=>r.date))].sort();
-  if(!dates.length){ $('checkInView').innerHTML='<div class="notice">No confirmed reservations yet.</div>'; return; }
+  if(!dates.length){ list.innerHTML=`<div class="notice">${state.reservations.some(r=>r.status==='confirmed')?'No guests match this filter.':'No confirmed reservations yet.'}</div>`; return; }
   const nameKey=r=>((r.lastName||'')+' '+(r.firstName||'')).toLowerCase();
   const byTimeName=(a,b)=>a.time.localeCompare(b.time)||nameKey(a).localeCompare(nameKey(b));
-  const service=(label,list)=>{
-    const inCount=list.filter(r=>r.checkedIn).length;
-    const guests=list.length?list.map(r=>`
+  const service=(label,rows)=>{
+    const total=rows.length, inCount=rows.filter(r=>r.checkedIn).length;
+    const shown=_ciHideIn?rows.filter(r=>!r.checkedIn):rows;
+    const guests=shown.length?shown.map(r=>`
       <div class="ci-guest${r.checkedIn?' done':''}">
         <div class="ci-guest-main">
           <span class="ci-guest-name">${esc(r.lastName)}, ${esc(r.firstName)}${dupBadge(dupMap.get(r.id))}</span>
           <span class="ci-guest-sub">${fmtTime(r.time)} · Party of ${r.party} · ${esc(r.code)}</span>
         </div>
-        <button class="btn ${r.checkedIn?'success':'primary'}" style="font-size:11px;padding:5px 11px;white-space:nowrap" onclick="checkInGuest('${r.id}')">${r.checkedIn?'✓ In':'Check in'}</button>
-      </div>`).join(''):'<div style="font-size:12px;color:var(--text3);padding:6px 0">No reservations.</div>';
+        <button class="btn ${r.checkedIn?'success':'primary'}" style="font-size:11px;padding:6px 12px;white-space:nowrap" onclick="checkInGuest('${r.id}')">${r.checkedIn?'✓ In':'Check in'}</button>
+      </div>`).join(''):`<div style="font-size:12px;color:var(--text3);padding:6px 0">${total?'All checked in.':'No reservations.'}</div>`;
     return `<div class="ci-service">
-      <div class="ci-service-hd"><span>${label}</span><b>${inCount}/${list.length} in</b></div>
+      <div class="ci-service-hd"><span>${label}</span><b>${inCount}/${total} in</b></div>
       ${guests}
     </div>`;
   };
-  $('checkInView').innerHTML=dates.map(date=>{
+  list.innerHTML=dates.map(date=>{
     const dayRes=confirmed.filter(r=>r.date===date);
     const lunch=dayRes.filter(r=>r.time<'15:00').sort(byTimeName);
     const dinner=dayRes.filter(r=>r.time>='15:00').sort(byTimeName);
-    const dayIn=dayRes.filter(r=>r.checkedIn).length;
+    const dayIn=dayRes.filter(r=>r.checkedIn).length, dayTot=dayRes.length;
+    const pct=dayTot?Math.round(dayIn/dayTot*100):0;
     return `<div class="ci-day">
-      <div class="ci-day-hd"><span>${fmtDate(date)}</span><span class="ci-day-count">${dayIn}/${dayRes.length} checked in</span></div>
+      <div class="ci-day-hd"><span>${fmtDate(date)}</span><span class="ci-day-count">${dayIn}/${dayTot} checked in</span></div>
+      <div class="ci-arrival"><div class="ci-arrival-bar" style="width:${pct}%"></div></div>
       <div class="ci-day-body">${service('Lunch',lunch)}${service('Dinner',dinner)}</div>
     </div>`;
   }).join('');
@@ -1578,13 +1830,13 @@ async function checkInGuest(id){
   r.checkedInAt=r.checkedIn?new Date().toISOString():null;
   r.updatedAt=new Date().toISOString();
   saveState();
-  renderCheckInView(); renderAdminMetrics();
+  renderCheckInList(); renderAdminMetrics();
   if(API_URL){
     await sync.push('check_in',{ id:r.id, checkedIn:r.checkedIn, checkedInAt:r.checkedInAt });
     // Re-apply locally in case the server response doesn't carry the check-in flag.
     const r2=state.reservations.find(x=>x.id===id);
     if(r2 && r2.checkedIn!==r.checkedIn){ r2.checkedIn=r.checkedIn; r2.checkedInAt=r.checkedInAt; saveState(); }
-    renderCheckInView(); renderAdminMetrics();
+    renderCheckInList(); renderAdminMetrics();
   }
   toast(r.checkedIn?`Checked in — ${r.firstName} ${r.lastName}`:'Check-in undone.');
 }
