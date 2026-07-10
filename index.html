@@ -605,6 +605,11 @@ textarea{resize:vertical;min-height:68px}
     </div>
     <!-- Metrics -->
     <div class="admin-metrics" id="adminMetrics"></div>
+    <!-- Data storage -->
+    <div class="admin-section">
+      <div class="admin-section-title">Data storage <span style="font-size:12px;font-weight:400;color:var(--text3)">Connect Firebase to store reservations in the cloud and sync live across devices</span></div>
+      <div id="firebaseConfig"></div>
+    </div>
     <!-- Email delivery -->
     <div class="admin-section">
       <div class="admin-section-title">Email delivery <span style="font-size:12px;font-weight:400;color:var(--text3)">Connect EmailJS to actually send confirmation emails</span></div>
@@ -723,6 +728,69 @@ const sync = {
   }
 };
 
+// ── FIREBASE STORAGE (optional cloud backend) ────────────────────────────────
+// Stores the whole app state in one Firestore document (neighborly/state) and
+// keeps every device in sync in real time. The operator pastes their Firebase
+// config in the team portal; the modular SDK is imported on demand so the page
+// stays light when Firebase isn't used. When connected, every saveState mirrors
+// to the cloud and remote changes stream back via onSnapshot.
+const fbSync = {
+  ready:false, app:null, db:null, api:null, unsub:null, writing:false, timer:null, err:'',
+  parseConfig(text){
+    let t=(text||'').trim(); if(!t) return null;
+    const i=t.indexOf('{'), j=t.lastIndexOf('}'); if(i<0||j<0) return null;
+    t=t.slice(i,j+1);
+    try{ return JSON.parse(t); }catch(e){}
+    // Tolerate the JS object literal the Firebase console shows (unquoted keys,
+    // single quotes, trailing commas) by normalising to JSON — no eval.
+    try{
+      const n=t.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g,'$1"$2":').replace(/'/g,'"').replace(/,\s*([}\]])/g,'$1');
+      return JSON.parse(n);
+    }catch(e){ return null; }
+  },
+  config(){ return fbSync.parseConfig(state.settings && state.settings.firebase); },
+  connected(){ return !!fbSync.ready; },
+  async connect(){
+    const cfg=fbSync.config();
+    if(!cfg || !cfg.projectId || !cfg.apiKey){ fbSync.err='Config needs at least projectId and apiKey.'; return false; }
+    try{
+      const V='10.12.2';
+      const [appMod, fsMod]=await Promise.all([
+        import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`),
+        import(`https://www.gstatic.com/firebasejs/${V}/firebase-firestore.js`)
+      ]);
+      fbSync.app=appMod.initializeApp(cfg);
+      fbSync.db =fsMod.getFirestore(fbSync.app);
+      fbSync.api=fsMod;
+      const ref=fsMod.doc(fbSync.db,'neighborly','state');
+      const snap=await fsMod.getDoc(ref);
+      fbSync.ready=true; fbSync.err='';
+      if(snap.exists() && snap.data() && snap.data().state){
+        state=snap.data().state; saveLocal();          // adopt the shared cloud state
+        if(adminUnlocked) renderAdminInPlace(); else route();
+      } else {
+        await fbSync.write();                            // seed the cloud from this device
+      }
+      fbSync.unsub=fsMod.onSnapshot(ref, s=>{           // live updates from other devices
+        if(fbSync.writing) return;
+        const d=s.data();
+        if(d && d.state){ state=d.state; saveLocal(); if(adminUnlocked) renderAdminInPlace(); }
+      });
+      return true;
+    }catch(e){ fbSync.ready=false; fbSync.err=(e&&e.message)||'connection failed'; return false; }
+  },
+  disconnect(){ try{ if(fbSync.unsub) fbSync.unsub(); }catch(e){} fbSync.unsub=null; fbSync.ready=false; },
+  scheduleWrite(){ if(!fbSync.ready) return; clearTimeout(fbSync.timer); fbSync.timer=setTimeout(fbSync.write,350); },
+  async write(){
+    if(!fbSync.ready) return;
+    const {doc,setDoc}=fbSync.api;
+    fbSync.writing=true;
+    try{ await setDoc(doc(fbSync.db,'neighborly','state'),{ state, updatedAt:Date.now() }); }
+    catch(e){ fbSync.err=(e&&e.message)||'write failed'; }
+    finally{ setTimeout(()=>{ fbSync.writing=false; },500); }
+  }
+};
+
 // Pull fresh state when the tab becomes visible again
 document.addEventListener('visibilitychange', ()=>{
   if (!document.hidden && API_URL) sync.pull().then(ok => {
@@ -769,7 +837,7 @@ function defaultState(){
   })));
   return {
     inventory, reservations:[], emails:[],
-    settings:{ location:'Neighborly Studio City', eventName:'VIP Preview Event', password:PASSWORD, emailjs:{ service:EJS_SERVICE, template:EJS_TEMPLATE, publicKey:EJS_KEY } }
+    settings:{ location:'Neighborly Studio City', eventName:'VIP Preview Event', password:PASSWORD, emailjs:{ service:EJS_SERVICE, template:EJS_TEMPLATE, publicKey:EJS_KEY }, firebase:'' }
   };
 }
 function loadState(){
@@ -780,13 +848,16 @@ function loadState(){
       if(s.settings) s.settings.password=PASSWORD;
       // Backfill email delivery config for state saved before it existed.
       if(s.settings && !s.settings.emailjs) s.settings.emailjs={ service:EJS_SERVICE, template:EJS_TEMPLATE, publicKey:EJS_KEY };
+      if(s.settings && s.settings.firebase===undefined) s.settings.firebase='';
       return s;
     }
     return defaultState();
   }
   catch(e){ return defaultState(); }
 }
-function saveState(){ localStorage.setItem(STORE,JSON.stringify(state)); }
+function saveLocal(){ localStorage.setItem(STORE,JSON.stringify(state)); }
+// saveState persists locally and mirrors to the cloud (Firestore) when connected.
+function saveState(){ saveLocal(); if(typeof fbSync!=='undefined' && fbSync.ready) fbSync.scheduleWrite(); }
 
 // ── ROUTING ──────────────────────────────────────────────────────────────────
 function go(route,params=''){
@@ -797,6 +868,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   if (!location.hash) go('welcome');
   if (API_URL) {
     try { await sync.pull(); } catch(e){}
+  }
+  if (fbSync.config()) {
+    try { await fbSync.connect(); } catch(e){}
   }
   route();
 });
@@ -1437,12 +1511,62 @@ function renderAdmin(){
 function renderAdminInPlace(){
   if (!adminUnlocked) return;
   renderAdminMetrics();
+  renderFirebaseConfig();
   renderEmailConfig();
   renderCheckInView();
   renderInventoryGrid();
   renderGroupedView();
   renderReservationsTable();
   renderEmailsTable();
+}
+
+// ── DATA STORAGE (Firebase) ──────────────────────────────────────────────────
+function renderFirebaseConfig(){
+  const wrap=$('firebaseConfig'); if(!wrap) return;
+  const ae=document.activeElement;
+  if(ae && ae.id==='fbConfigInput') return;   // don't stomp the operator mid-paste
+  const raw=(state.settings&&state.settings.firebase)||'';
+  const connected=fbSync.connected();
+  wrap.innerHTML=`
+    <div class="notice ${connected?'ok':(fbSync.err?'warn':'info')}" style="margin-bottom:12px">
+      ${connected
+        ? '✓ Connected to Firebase — reservations, capacity and check-ins are stored in the cloud and sync live across every device.'
+        : (fbSync.err ? 'Not connected — '+esc(fbSync.err) : 'Not connected — data is saved only in this browser. Paste your Firebase config to store it in the cloud and share it across devices.')}
+    </div>
+    <label class="full"><span class="f-lbl">Firebase config</span>
+      <textarea id="fbConfigInput" rows="7" style="font-family:'DM Mono',monospace;font-size:12px;line-height:1.5" placeholder='{&#10;  "apiKey": "…",&#10;  "authDomain": "your-app.firebaseapp.com",&#10;  "projectId": "your-app",&#10;  "appId": "…"&#10;}'>${esc(raw)}</textarea></label>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn primary" onclick="saveFirebaseConfig()">${connected?'Reconnect':'Save & connect'}</button>
+      ${connected?`<button class="btn" onclick="pushLocalToCloud()">Push this device's data to cloud</button>`:''}
+      ${connected?`<button class="btn danger" onclick="disconnectFirebase()">Disconnect</button>`:''}
+      <a class="btn" href="https://console.firebase.google.com/" target="_blank" rel="noopener">Firebase console ↗</a>
+    </div>
+    <p style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:10px">
+      In the Firebase console: create a project → add a <b>Web app</b> → copy the <span class="mono">firebaseConfig</span> object and paste it above.
+      Turn on <b>Firestore Database</b>. The whole app state lives in the <span class="mono">neighborly/state</span> document; every device that loads this config reads and writes it live.
+      For a quick start, set Firestore rules to allow read/write — then tighten them before a real launch.</p>`;
+}
+async function saveFirebaseConfig(){
+  const raw=$('fbConfigInput').value.trim();
+  const cfg=fbSync.parseConfig(raw);
+  if(raw && !cfg){ toast('Could not read that config — paste the firebaseConfig object from the console.'); return; }
+  state.settings.firebase = cfg ? JSON.stringify(cfg,null,2) : '';
+  saveLocal();
+  fbSync.disconnect();
+  if(cfg){
+    toast('Connecting to Firebase…');
+    const ok=await fbSync.connect();
+    toast(ok ? 'Connected to Firebase.' : ('Firebase: '+(fbSync.err||'connection failed')));
+  } else {
+    toast('Firebase disconnected.');
+  }
+  renderFirebaseConfig();
+}
+function disconnectFirebase(){ fbSync.disconnect(); renderFirebaseConfig(); toast('Disconnected — data stays in this browser.'); }
+async function pushLocalToCloud(){
+  if(!fbSync.connected()){ toast('Connect Firebase first.'); return; }
+  await fbSync.write();
+  toast("Pushed this device's data to the cloud.");
 }
 
 // ── EMAIL DELIVERY (EmailJS) ─────────────────────────────────────────────────
