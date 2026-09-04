@@ -1,0 +1,63 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Firestore security rules for the Neighborly reservation app.
+//
+// The whole app state lives in a single document: neighborly/state
+// (see fbSync in index.html). These rules are a SENSIBLE STARTER for a public
+// booking page: anyone can read availability and create/update the booking
+// state, but nobody can delete it or touch anything else.
+//
+// How to apply: Firebase console -> Firestore Database -> Rules -> paste -> Publish.
+//
+// ⚠️ Before a real launch, tighten this. Because the app stores everything in
+// one document, an open "update" lets any visitor overwrite the entire state.
+// The recommended hardening is at the bottom of this file: move writes behind a
+// Cloud Function (server-side validation) and lock direct client writes down,
+// or gate the team hub with Firebase Auth / Supabase and restrict writes to
+// authenticated staff.
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // The single app-state document.
+    match /neighborly/state {
+      // Guests need to read availability to book.
+      allow read: if true;
+
+      // Guests create the doc on first write and update it when booking.
+      // Never allow delete (prevents wiping all reservations/inventory).
+      allow create, update: if true;
+      allow delete: if false;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECOMMENDED HARDENED VERSION (for launch)
+//
+// Option A — Firebase Auth gate for staff-only writes, public reads:
+//
+//   match /neighborly/state {
+//     allow read: if true;                       // public availability
+//     allow write: if request.auth != null;      // only signed-in staff
+//   }
+//
+// Option B — Cloud Function does all writes (client is read-only):
+//
+//   match /neighborly/state {
+//     allow read: if true;
+//     allow write: if false;                      // only the Admin SDK / Function
+//   }
+//   ...and route bookings through an HTTPS Callable Function that validates the
+//   slot is still available before committing the write.
+//
+// Option C — if/when Supabase handles auth, verify a signed session (custom
+// claims / JWT) here and restrict writes to that identity.
+// ─────────────────────────────────────────────────────────────────────────────
