@@ -467,6 +467,41 @@ textarea{resize:vertical;min-height:68px}
 .code-pill,.dup-flag,.tag,.avail-pill{border-radius:999px}
 input[type=text],input[type=email],input[type=tel],input[type=date],input[type=time],input[type=number],input[type=password],input:not([type]),textarea,select{border-color:var(--border-strong);border-radius:14px}
 input[type=text],input[type=email],input[type=tel],input[type=password],input:not([type]){border-radius:999px}
+/* Headings: clean Futura uppercase like the gift-card h1 — TAYAmaya was the casual
+   cursive accent (Caveat fallback) and read as wonky at heading sizes. */
+.tay,.hero-title,.panel-title,.confirm-title,.modal-title,.admin-lock-title,.sbox-title,
+.inv-day-header,.admin-section-title,#page-manage h1,#page-admin h1,.manage-content h1{
+  font-family:'Futura Neighborly','DM Sans',sans-serif;text-transform:uppercase;font-weight:600;letter-spacing:.02em}
+.hero-title{letter-spacing:.01em;line-height:1.0}
+.panel-title,.confirm-title{letter-spacing:.015em;line-height:1.02}
+.manage-content h1,#page-manage h1{letter-spacing:.015em;line-height:1.04}
+
+/* ── UNIFIED FLOW CARD — every step is the same bounded card, centered on screen;
+   content scrolls inside when it's taller than the card (sleek + consistent). ── */
+#page-welcome.page.active,#page-book.page.active,#page-confirm.page.active,#page-manage.page.active{
+  justify-content:center;align-items:center;min-height:calc(100vh - 50px);padding:clamp(14px,2.6vw,30px)}
+.shell,.confirm-card,.manage-card{
+  width:min(940px,100%);height:clamp(520px,76vh,668px);
+  grid-template-columns:.82fr 1.18fr;border-radius:26px;border:1px solid var(--border);
+  box-shadow:0 18px 44px rgba(30,35,41,.10);margin:0 auto}
+.confirm-wrap,.manage-wrap{width:min(940px,100%)}
+.editorial,.confirm-photo,.manage-photo{min-height:0;height:100%}
+.booking-panel,.confirm-content,.manage-content{min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* Center content when it fits; 'safe' keeps it scrollable (no clipping) when taller */
+.confirm-content,.manage-content,#page-welcome .booking-panel{justify-content:safe center}
+/* Book: pin the step header, scroll just the choices/form beneath it */
+#page-book .booking-panel{overflow:hidden}
+#page-book .panel-top{flex-shrink:0}
+#page-book .panel-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* Mobile: stack and let the page scroll naturally instead of a fixed-height card */
+@media(max-width:900px){
+  #page-welcome.page.active,#page-book.page.active,#page-confirm.page.active,#page-manage.page.active{
+    align-items:stretch;justify-content:flex-start}
+  .shell,.confirm-card,.manage-card{height:auto;grid-template-columns:1fr}
+  .editorial,.confirm-photo,.manage-photo{height:auto;min-height:210px}
+  .booking-panel,.confirm-content,.manage-content,
+  #page-book .booking-panel,#page-book .panel-body{overflow:visible;min-height:auto}
+}
 </style>
 </head>
 <body>
@@ -511,7 +546,6 @@ input[type=text],input[type=email],input[type=tel],input[type=password],input:no
           <div class="srow"><span>Where</span><strong>12050 Ventura Blvd, Studio City</strong></div>
           <div class="srow"><span>Dates</span><strong>September 18–20</strong></div>
           <div class="srow"><span>Seatings</span><strong>Lunch &amp; dinner</strong></div>
-          <div class="srow"><span>The deal</span><strong>A meal on us — one party per guest</strong></div>
         </div>
         <div class="btn-row" style="justify-content:center">
           <button class="btn" onclick="go('manage')" style="font-size:12px;color:var(--text3);border:none;background:transparent;text-transform:none;letter-spacing:0;font-family:'DM Sans',sans-serif">Manage an existing reservation</button>
